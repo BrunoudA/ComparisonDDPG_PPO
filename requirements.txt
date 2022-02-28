@@ -1,0 +1,6 @@
+numpy
+gym
+matplotlib
+torch
+pygame
+pandas

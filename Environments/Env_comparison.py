@@ -6,11 +6,21 @@ import random
 # import pygame
 import math
 
+#I do not comment the self parameter because it's just an instance of the class (classic parameter)
 
 class Crosswalk_comparison(gym.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human']}
-
+    """
+        Crosswalk_comparison: creation of the environment
+        :param dt: step time
+        :param Vm: max pedestrian speed
+        :param tau: reaction time
+        :param lower_bounds: parameters for initial state (lower bound)
+        :param upper_bounds: parameters for initial state (upper bound)
+        :param simulation: pedestrian speed model
+    """
+    
     def __init__(self, dt, Vm, tau, lower_bounds, upper_bounds, simulation="unif"):
         super(Crosswalk_comparison, self).__init__()
         self.seed()
@@ -43,16 +53,31 @@ class Crosswalk_comparison(gym.Env):
                                                            30.0, 1.0, 1.0, 0.0, 90.0*dt]),
                                             shape=(10,), dtype=np.float32)
         self.acc_param = [(self.u_b[0]-self.l_b[0])/2.0, (self.u_b[0]+self.l_b[0])/2.0]
-
-    def seed(self, seed=None):
-        self.np_rand, seed = seeding.np_random(1)
+    
+    """
+        Setting the seed: we need with the same seed for PPO and DDPG
+        :param seed: seed value
+        :return: seed value
+    """
+    def seed(self, seed=1):
+        self.np_rand, seed = seeding.np_random(seed)
         return [seed]
 
+    """
+        Compute the car acceleration 
+        :param value_acc: continuous action from the actor network
+        :return: rescale acceleration over the model bounds (corresponding to the vehicle)
+    """
     def acceleration(self, value_acc):
         if(value_acc<self.l_b[0] or value_acc>self.u_b[0]):
             print('pbm value acc')
         return value_acc * self.acc_param[0] + self.acc_param[1]
 
+    """
+        Compute the state parameters for the vehicle
+        :param action_acc: continuous action from the actor network
+        :return: vehicle acceleration, speed and position
+    """
     def new_car(self, action_acc):
         acc = self.acceleration(action_acc)
         if math.isnan(acc):
@@ -66,6 +91,14 @@ class Crosswalk_comparison(gym.Env):
 
         return acc, speed, pos
 
+    """
+        Compute the Critical Gap of the pedestrian
+        :param genre: gender of the pesdestrian
+        :param age: age of the pesdestrian
+        :param alpha: hyperparameter
+        :param sigma: noise hyperparameter
+        :return: critical gap
+    """
     def CG_score(self, genre, age, alpha=0.09, sigma=0.09):
         fem, child, midage, old = 0.0369, -0.0355, -0.0221, -0.1810
         gamma = math.log10(self.cross/self.Vp)
@@ -73,11 +106,15 @@ class Crosswalk_comparison(gym.Env):
         log_val = log_val + self.np_rand.normal(loc=0.0, scale=sigma)
         return math.pow(10, log_val)
 
+    """
+        Decision-making for the pedestrian
+        :return: True=cross, False=wait
+    """
     def choix_pedestrian(self):
         r = self.np_rand.uniform(low=0, high=1)
         speed_car = self.state[1]
         pedestrian_estimation = self.CG
-        if (self.state[2] < 4.0) * (self.state[2] > 0.0): #4 = car size
+        if (self.state[2] < 4.0) * (self.state[2] > 0.0): # car_size=4
             return False
         if (speed_car == 0.0) + (self.state[2] > 4.0):
             return True
@@ -87,18 +124,30 @@ class Crosswalk_comparison(gym.Env):
             return True
         return False
 
+    """
+        Compute the state parameters for the pedestrian for uniform speed model 
+        :return: pedestrian position and speed 
+    """
     def new_pedestrian_unif(self):
         pos_p = self.state[4] + self.Vp * self.dt
         return pos_p, self.Vp
 
+    """
+        Compute the state parameters for the pedestrian for sinusoidal speed model 
+        :return: pedestrian position and speed 
+    """
     def new_pedestrian_sin(self):
-        t = self.state[9]+ self.dt#+ self.dt
+        t = self.state[9]+ self.dt
         speed_p = (self.A*math.sin(self.w*(t-self.t0))+self.B)
         pos_p = (self.A*(-math.cos(self.w*(t-self.t0))+math.cos(self.w*self.t_init))/self.w + self.B*(t-self.t_init))
         if(pos_p>=self.cross/2 and speed_p<=self.Vp):
             pos_p, speed_p=self.new_pedestrian_unif()
         return pos_p, speed_p
 
+    """
+        Compute the state parameters for the pedestrian with respect to the environment
+        :return: pedestrian position and speed 
+    """
     def new_pedestrian(self, function_step):
         pp = self.state[4] + self.Vp * self.dt
         choose = True
@@ -134,9 +183,24 @@ class Crosswalk_comparison(gym.Env):
             pos_p, speed_p = self.new_pedestrian_unif()
         return pos_p, speed_p
 
+    """
+        Compute safety factor
+        :param x: distance between the car and the crosswalk (negative value) 
+        :param v: vehicle speed
+        :return: safety factor
+    """
     def delta_l(self, x, v):
         return -x - (v * v / (-2.0 * self.l_b[0]) + self.tau * v)
 
+    """
+        Compute reward
+        :param acc: vehicle acceleration
+        :param pos: vehicle position
+        :param speed: vehicle speed
+        :param pos_p: pedestrian position
+        :param speed_p: pedestrian speed
+        :return: immediate reward with respect to the new state
+    """
     def new_reward_meng(self, acc, pos, speed, pos_p, speed_p):
 
         dl = self.delta_l(pos, speed)
@@ -168,12 +232,16 @@ class Crosswalk_comparison(gym.Env):
         # Others rewards
         rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
         rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)
-        #rew4 = rew4 + 0.5 * (pos >= 4.0)*(not self.accident)*(not self.no_safe)
         rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
         if math.isnan(rew4):
             print("Rew4 is Nan : accident="+str(self.accident))
         return rew1+rew2+rew3+rew4
 
+    """
+        Compute the new step: with respect to the previous state and the taken action
+        :param action_ar: action
+        :return: new state, immediate reward, boolean (is the new state terminal?)
+    """
     def step(self, action_ar):
         
         action_acc = action_ar[0]        
@@ -192,12 +260,15 @@ class Crosswalk_comparison(gym.Env):
         reward = self.new_reward_meng(acc, pos, speed, pos_p, speed_p)
         self.state = np.array([acc, speed, pos, speed_p, pos_p, dl,
                                ped_CZ, ped_left, diff_v, t], dtype=np.float32)
-        done = (self.temps <= 0.0) * (pos_p > self.cross) + (self.state[9] > 90.0*self.dt) #+ self.accident
+        done = (pos >= 0.0) * (self.temps <= 0.0) * (pos_p > self.cross) + (self.state[9] > 90.0*self.dt)
 
         return self.state, reward, bool(done), {}
 
+    """
+        Initialize a new episode
+        :return: initial state of the episode
+    """
     def reset(self):
-
         # Initial car speed
         self.Vc = self.np_rand.uniform(low=self.l_b[1], high=self.u_b[1])
         # Initial pedestrian speed
@@ -231,6 +302,10 @@ class Crosswalk_comparison(gym.Env):
             self.w = math.pi / self.T
         return self.state  # reward, done, info can't be included
 
+    """
+        Quick render
+        :param mode: only human render using pygame
+    """
     def render(self, mode='human'):
         # if self.window is None:
         #   pygame.init()
@@ -254,7 +329,10 @@ class Crosswalk_comparison(gym.Env):
         #                             2.0 * half_height), 2)
         # pygame.display.flip()
         return None
-
+    
+    """
+        Close the render
+    """
     def close(self):
         if self.viewer:
             self.viewer.close()
