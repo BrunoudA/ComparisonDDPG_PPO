@@ -14,3 +14,10 @@ register(
     max_episode_steps=90,
     reward_threshold=20.0,
 )
+
+register(
+    id="Crossway_comparisonQP-v0",
+    entry_point="Environments.Env_comparison_QP:Crosswalk_comparison_QP",
+    max_episode_steps=90,
+    reward_threshold=20.0,
+)
