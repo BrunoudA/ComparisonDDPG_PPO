@@ -220,7 +220,7 @@ class Crosswalk_comparison2(gym.Env):
             print("Rew2 is Nan : speed="+str(speed)+", et Vc="+str(self.Vc))
 
         # Acceleration reward
-        rew3 = -1.0 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 1.0 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
+        rew3 = -1.0 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.5 * (abs(self.state[0] - acc) < 0.2) #1.0#0.5#/(self.l_b[0])**2)
         if math.isnan(rew3):
             print("Rew3 is Nan : prev_acc="+str(self.state[0])+", et acc="+str(acc))
 
@@ -232,7 +232,7 @@ class Crosswalk_comparison2(gym.Env):
         # Others rewards
         rew4 = - 2.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
         rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)
-        rew4 = rew4 - 2.0 *(self.state[2]-pos) * (self.state[2]>pos)
+        rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
         if math.isnan(rew4):
             print("Rew4 is Nan : accident="+str(self.accident))
         return rew1+rew2+rew3+rew4
