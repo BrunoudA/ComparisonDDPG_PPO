@@ -8,7 +8,7 @@ import math
 
 #I do not comment the self parameter because it's just an instance of the class (classic parameter)
 
-class Crosswalk_comparison(gym.Env):
+class Crosswalk_comparison_DDPG(gym.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human']}
     """
@@ -22,7 +22,7 @@ class Crosswalk_comparison(gym.Env):
     """
     
     def __init__(self, dt, Vm, tau, lower_bounds, upper_bounds, simulation="unif"):
-        super(Crosswalk_comparison, self).__init__()
+        super(Crosswalk_comparison_DDPG, self).__init__()
         self.seed()
         self.viewer = False
         self.window = None
@@ -69,9 +69,12 @@ class Crosswalk_comparison(gym.Env):
         :return: rescale acceleration over the model bounds (corresponding to the vehicle)
     """
     def acceleration(self, value_acc):
-        if(value_acc<-1. or value_acc>1.0):
+        if(value_acc<-1. or value_acc>1.):
             print('pbm value acc')
-        return value_acc * self.acc_param[0] + self.acc_param[1]
+        if(value_acc<=0.):
+            return -self.l_b[0]*value_acc
+        else:
+            return self.u_b[0]*value_acc
 
     """
         Compute the state parameters for the vehicle
@@ -214,13 +217,13 @@ class Crosswalk_comparison(gym.Env):
             print("Rew1 is Nan : dl="+str(dl)+", pos="+str(pos)+", et pos_p="+str(pos_p))
 
         # Speed_reward
-        rew2 = -2.5 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed, 0.0) + 0.5 * (abs(self.state[1] - speed) < 0.5)
-        rew2 = rew2 - 1.3 * ((speed - self.Vc) ** 2/ self.Vc**2)- 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
+        rew2 = -2.0 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed, 0.0) + 0.2 * (abs(self.state[1] - speed) < 0.5) + 0.5 * (abs(self.Vc - speed) < 0.5)
+        rew2 = rew2 - 2.0 * ((speed - self.Vc) ** 2/ self.Vc**2) - 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
         if math.isnan(rew2):
             print("Rew2 is Nan : speed="+str(speed)+", et Vc="+str(self.Vc))
 
         # Acceleration reward
-        rew3 = -0.4 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.5 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
+        rew3 = -0.8 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.1 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
         if math.isnan(rew3):
             print("Rew3 is Nan : prev_acc="+str(self.state[0])+", et acc="+str(acc))
 
@@ -231,7 +234,7 @@ class Crosswalk_comparison(gym.Env):
 
         # Others rewards
         rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
-        rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)
+        rew4 = rew4 - 0.1 * (pos < 4.0) * (self.choix_voiture < 0)
         rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
         if math.isnan(rew4):
             print("Rew4 is Nan : accident="+str(self.accident))

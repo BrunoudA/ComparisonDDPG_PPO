@@ -69,7 +69,7 @@ class Crosswalk_comparison2(gym.Env):
         :return: rescale acceleration over the model bounds (corresponding to the vehicle)
     """
     def acceleration(self, value_acc):
-        if(value_acc<self.l_b[0] or value_acc>self.u_b[0]):
+        if(value_acc<-1. or value_acc>1.0):
             print('pbm value acc')
         return value_acc * self.acc_param[0] + self.acc_param[1]
 
@@ -205,7 +205,7 @@ class Crosswalk_comparison2(gym.Env):
 
         dl = self.delta_l(pos, speed)
         # Safety_reward
-        rew1 = 3.0 * dl * (dl < 0.0) + 0.5 * (dl >= 0.0) * (pos <= 0.0) #(pos <= 0.0)
+        rew1 = 3.0 * dl * (pos <= 0.0)* (dl < 0.0) + 0.5 * (dl >= 0.0) * (pos <= 0.0)
         rew1 = rew1 * (pos_p <= self.cross) * (self.choix_voiture >= 0)
         rew1= rew1 - 30.0 * self.accident - 5.0 * self.no_safe 
         if (dl < 0.0) * (pos_p <= self.cross) * (self.choix_voiture >= 0):
@@ -214,13 +214,13 @@ class Crosswalk_comparison2(gym.Env):
             print("Rew1 is Nan : dl="+str(dl)+", pos="+str(pos)+", et pos_p="+str(pos_p))
 
         # Speed_reward
-        rew2 = -2.5 * max(speed - self.Vc*1.2, 0.0) + 1.0 * min(speed, 0.0) + 2.5 * (abs(self.state[1] - speed) < 0.5)
-        rew2 = rew2 - 2.0 * ((speed - self.Vc) ** 2/ self.Vc**2)- 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
+        rew2 = -2.0 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed, 0.0) + 0.2 * (abs(self.state[1] - speed) < 0.5) + 0.5 * (abs(self.Vc - speed) < 0.5)
+        rew2 = rew2 - 2.0 * ((speed - self.Vc) ** 2/ self.Vc**2) - 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
         if math.isnan(rew2):
             print("Rew2 is Nan : speed="+str(speed)+", et Vc="+str(self.Vc))
 
         # Acceleration reward
-        rew3 = -1.0 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.5 * (abs(self.state[0] - acc) < 0.2) #1.0#0.5#/(self.l_b[0])**2)
+        rew3 = -0.8 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.1 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
         if math.isnan(rew3):
             print("Rew3 is Nan : prev_acc="+str(self.state[0])+", et acc="+str(acc))
 
@@ -230,8 +230,8 @@ class Crosswalk_comparison2(gym.Env):
             print("Accident!")
 
         # Others rewards
-        rew4 = - 2.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
-        rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)
+        rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
+        rew4 = rew4 - 0.1 * (pos < 4.0) * (self.choix_voiture < 0)
         rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
         if math.isnan(rew4):
             print("Rew4 is Nan : accident="+str(self.accident))
