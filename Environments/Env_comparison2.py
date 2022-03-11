@@ -205,34 +205,36 @@ class Crosswalk_comparison2(gym.Env):
 
         dl = self.delta_l(pos, speed)
         # Safety_reward
-        rew1 = 3.0 * dl * (pos <= 0.0)* (dl < 0.0) + 0.5 * (dl >= 0.0) * (pos <= 0.0)
+        rew1 = 3.0 * dl * (pos <= 0.)* (dl < 0.) + 0.5 * (dl >= 0.) * (pos <= 0.)
         rew1 = rew1 * (pos_p <= self.cross) * (self.choix_voiture >= 0)
-        rew1= rew1 - 30.0 * self.accident - 5.0 * self.no_safe 
-        if (dl < 0.0) * (pos_p <= self.cross) * (self.choix_voiture >= 0):
+        rew1= rew1 - 30. * self.accident - 5. * self.no_safe 
+        if (dl < 0.) * (pos_p <= self.cross) * (self.choix_voiture >= 0):
             self.no_safe = True
         if math.isnan(rew1):
             print("Rew1 is Nan : dl="+str(dl)+", pos="+str(pos)+", et pos_p="+str(pos_p))
 
         # Speed_reward
-        rew2 = -2.0 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed, 0.0) + 0.2 * (abs(self.state[1] - speed) < 0.5) + 0.5 * (abs(self.Vc - speed) < 0.5)
-        rew2 = rew2 - 2.0 * ((speed - self.Vc) ** 2/ self.Vc**2) - 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
+        rew2 = -2. * max(speed - self.Vc*1.1, 0.) + 1. * min(speed, 0.) #prevent extreme values
+        rew2 = rew2 + 0.2 * (abs(self.state[1] - speed) < 0.5) + 1.0 * (abs(self.Vc - speed) < 0.5) #encourage low changements
+        rew2 = rew2 - 2. * ((speed - self.Vc) ** 2/ self.Vc**2) - 5. * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
         if math.isnan(rew2):
             print("Rew2 is Nan : speed="+str(speed)+", et Vc="+str(self.Vc))
 
         # Acceleration reward
-        rew3 = -0.8 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.1 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
+        rew3 = -0.8 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.5 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
         if math.isnan(rew3):
             print("Rew3 is Nan : prev_acc="+str(self.state[0])+", et acc="+str(acc))
 
-        if (not self.accident) * (0.0 < pos_p) * (0.0 < pos) * (self.state[2] <= 4.0) * (self.state[4] < self.cross):
+        if (not self.accident) * (0. < pos_p) * (0. < pos) * (self.state[2] <= 4.) * (self.state[4] < self.cross):
             self.accident = True
             self.no_safe = True
             print("Accident!")
 
         # Others rewards
-        rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
-        rew4 = rew4 - 0.1 * (pos < 4.0) * (self.choix_voiture < 0)
-        rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
+        rew4 = - 5. * (pos_p >= self.cross) * (pos < 4.) * (self.choix_voiture > 0) #encourage pass the crossing after the pedestrian crossing
+        rew4 = rew4 - 2. * (abs(self.Vc - speed) > 0.5) *(pos > 4.0) #encourage increase speed
+        rew4 = rew4 - 0.1 * (pos < 4.) * (self.choix_voiture < 0) #encourage pass the crossing
+        rew4 = rew4 - 5. *(self.state[2]-pos) * (self.state[2]>pos) #the car go backward
         if math.isnan(rew4):
             print("Rew4 is Nan : accident="+str(self.accident))
         return rew1+rew2+rew3+rew4
