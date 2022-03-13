@@ -8,11 +8,11 @@ import math
 
 #I do not comment the self parameter because it's just an instance of the class (classic parameter)
 
-class Crosswalk_comparison2(gym.Env):
+class Crosswalk_test(gym.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human']}
     """
-        Crosswalk_comparison2: creation of the environment
+        Crosswalk_test: creation of the environment
         :param dt: step time
         :param Vm: max pedestrian speed
         :param tau: reaction time
@@ -21,9 +21,9 @@ class Crosswalk_comparison2(gym.Env):
         :param simulation: pedestrian speed model
     """
     
-    def __init__(self, dt, Vm, tau, lower_bounds, upper_bounds, simulation="unif"):
-        super(Crosswalk_comparison2, self).__init__()
-        self.seed()
+    def __init__(self, dt, Vm, lower_bounds, upper_bounds, simulation="unif", initial_mode="",seed=1):
+        super(Crosswalk_test, self).__init__()
+        self.seed(seed)
         self.viewer = False
         self.window = None
         # Fixed data for intersection & condition simulation
@@ -31,10 +31,12 @@ class Crosswalk_comparison2(gym.Env):
         self.l_b = lower_bounds
         self.u_b = upper_bounds
         self.Vm = Vm  # max pedestrian speed
-        self.tau = tau # reaction time = 1 sec
+        self.tau = 1.0 # reaction time = 1 sec
         self.t_init = 0.0
         # Pedestrian model
         self.simulation = simulation
+        #Mode for initialisation
+        self.initial_mode = initial_mode
         # Max steps
         self.max_episode_steps = 90
         # crosswalk size
@@ -148,7 +150,7 @@ class Crosswalk_comparison2(gym.Env):
         Compute the state parameters for the pedestrian with respect to the environment
         :return: pedestrian position and speed 
     """
-    def new_pedestrian(self, function_step):
+    def new_pedestrian(self):
         pp = self.state[4] + self.Vp * self.dt
         choose = True
         # Pedestrian choice
@@ -168,8 +170,11 @@ class Crosswalk_comparison2(gym.Env):
                 self.time_stop = self.time_stop - 1
                 self.t0 = self.t0 + self.dt
             # The pedestrian walks
-            elif (self.np_rand.uniform(low=0, high=1) < 0.99) * choose:
-                pos_p, speed_p = function_step()
+            elif (self.np_rand.uniform(low=0, high=1) < self.stop_proba) * choose:
+                if self.simulation == "sin":
+                    pos_p, speed_p = self.new_pedestrian_sin()
+                else:
+                    pos_p, speed_p = self.new_pedestrian_unif()
                 #self.T = self.T-self.dt
             # The pedestrian stops
             else:
@@ -214,8 +219,7 @@ class Crosswalk_comparison2(gym.Env):
             print("Rew1 is Nan : dl="+str(dl)+", pos="+str(pos)+", et pos_p="+str(pos_p))
 
         # Speed_reward
-        rew2 = -2.5 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed - self.Vc*0.1, 0.0)  #prevent extreme values
-        rew2 = rew2 + 0.5 * (abs(self.state[1] - speed) < 0.5) + 0.5 * (abs(self.Vc - speed) < 0.5) #encourage low changements
+        rew2 = -2.5 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed, 0.0) + 0.5 * (abs(self.state[1] - speed) < 0.5)
         rew2 = rew2 - 1.3 * ((speed - self.Vc) ** 2/ self.Vc**2)- 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
         if math.isnan(rew2):
             print("Rew2 is Nan : speed="+str(speed)+", et Vc="+str(self.Vc))
@@ -231,10 +235,9 @@ class Crosswalk_comparison2(gym.Env):
             print("Accident!")
 
         # Others rewards
-        rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0) #encourage pass the crossing after the pedestrian crossing
-        rew4 = rew4 - 2. * (abs(self.Vc - speed) > 0.5) *(pos > 4.0) #encourage increase speed
-        rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)#encourage pass the crossing
-        rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos) #the car go backward
+        rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
+        rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)
+        rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
         if math.isnan(rew4):
             print("Rew4 is Nan : accident="+str(self.accident))
         return rew1+rew2+rew3+rew4
@@ -247,11 +250,8 @@ class Crosswalk_comparison2(gym.Env):
     def step(self, action_ar):
         
         action_acc = action_ar[0]        
-        acc, speed, pos = self.new_car(action_acc) 
-        if self.simulation == "sin":
-            pos_p, speed_p = self.new_pedestrian(self.new_pedestrian_sin)
-        else:
-            pos_p, speed_p = self.new_pedestrian(self.new_pedestrian_unif)
+        acc, speed, pos = self.new_car(action_acc)
+        pos_p, speed_p = self.new_pedestrian()
         diff_v = speed - self.Vc
         dl = self.delta_l(pos, speed)
         t = self.state[9] + self.dt
@@ -271,6 +271,7 @@ class Crosswalk_comparison2(gym.Env):
         :return: initial state of the episode
     """
     def reset(self):
+        
         # Initial car speed
         self.Vc = self.np_rand.uniform(low=self.l_b[1], high=self.u_b[1])
         # Initial pedestrian speed
@@ -291,6 +292,11 @@ class Crosswalk_comparison2(gym.Env):
         self.no_safe = False
         # Time after pedestrian crossing (let the vehicle accelerate)
         self.temps = self.Vc/self.u_b[0]
+        # probability for pedestrian for crossing (no stop)
+        if (self.initial_mode=="stops"):
+            self.cross_proba= 0.95
+        else:
+            self.cross_proba=0.99
         
         # Pedestrian parameters
         self.time_stop = 0
