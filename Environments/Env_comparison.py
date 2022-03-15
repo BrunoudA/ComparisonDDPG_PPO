@@ -154,6 +154,7 @@ class Crosswalk_comparison(gym.Env):
         # Pedestrian choice
         if self.state[4] == 0.0:
             choose = self.choix_pedestrian()
+            #self.choix_voiture = (choose) - (not choose)
             self.t0 = self.state[9]
         # Pedestrian arrives at the crosswalk
         if (self.state[4] < 0.0) * (pp >= 0.0):
@@ -164,11 +165,13 @@ class Crosswalk_comparison(gym.Env):
         elif (self.state[4] >= 0.0) * (self.state[4] < self.cross) * (self.T + self.t0 > self.state[9]+ self.dt ):
             # The pedestrain waits
             if self.time_stop != 0:
+                #self.choix_voiture = 1
                 pos_p, speed_p = self.state[4], 0.0
                 self.time_stop = self.time_stop - 1
                 self.t0 = self.t0 + self.dt
             # The pedestrian walks
             elif (self.np_rand.uniform(low=0, high=1) < 0.99) * choose:
+                #self.choix_voiture = 1
                 pos_p, speed_p = function_step()
                 #self.T = self.T-self.dt
             # The pedestrian stops
@@ -205,36 +208,39 @@ class Crosswalk_comparison(gym.Env):
 
         dl = self.delta_l(pos, speed)
         # Safety_reward
-        rew1 = 3.0 * dl * (pos <= 0.0)* (dl < 0.0) + 0.5 * (dl >= 0.0) * (pos <= 0.0)
+        rew1 = 4.0 * dl * (pos <= 0.0)* (dl < 0.0) + 0.5 * (dl >= 0.0) * (pos <= 0.0)
         rew1 = rew1 * (pos_p <= self.cross) * (self.choix_voiture >= 0)
-        rew1= rew1 - 30.0 * self.accident - 5.0 * self.no_safe 
+        rew1= rew1 - 50.0 * self.accident - 5.0 * self.no_safe #30 et 5
         if (dl < 0.0) * (pos_p <= self.cross) * (self.choix_voiture >= 0):
             self.no_safe = True
         if math.isnan(rew1):
             print("Rew1 is Nan : dl="+str(dl)+", pos="+str(pos)+", et pos_p="+str(pos_p))
 
         # Speed_reward
-        rew2 = -2.5 * max(speed - self.Vc*1.1, 0.0) + 1.0 * min(speed, 0.0) + 0.5 * (abs(self.state[1] - speed) < 0.5)
-        rew2 = rew2 - 1.3 * ((speed - self.Vc) ** 2/ self.Vc**2)- 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
+        rew2 = -2.5 * max(speed - self.Vc*1.1, 0.0) + 2.5 * min(speed - self.Vc*0.1, 0.0)  #prevent extreme values
+        rew2 = rew2 + 0.5 * (abs(self.state[1] - speed) < 0.5) + 0.5 * (abs(self.Vc - speed) < 0.5)  #encourage low changements
+        rew2 = rew2 - 1.0 * ((speed - self.Vc) ** 2/ self.Vc**2)- 5.0 * ((speed_p - self.Vp)**2 / self.Vp**2)#1.0
         if math.isnan(rew2):
             print("Rew2 is Nan : speed="+str(speed)+", et Vc="+str(self.Vc))
 
         # Acceleration reward
-        rew3 = -0.4 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.5 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
+        rew3 = -0.8 * ((self.state[0] - acc)**2/(self.l_b[0])**2) + 0.5 * (abs(self.state[0] - acc) < 0.2) #0.5#/(self.l_b[0])**2)
         if math.isnan(rew3):
             print("Rew3 is Nan : prev_acc="+str(self.state[0])+", et acc="+str(acc))
 
+        # Others rewards
+        rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0) #encourage pass the crosswalk after the pedestrian
+        rew4 = rew4 - 2. * (abs(self.Vc - speed) > 0.5) *(pos > 4.0) #encourage increase speed
+        rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)#encourage pass the crossing
+        rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos) #the car go backward
+        if math.isnan(rew4):
+            print("Rew4 is Nan : accident="+str(self.accident))
+        
         if (not self.accident) * (0.0 < pos_p) * (0.0 < pos) * (self.state[2] <= 4.0) * (self.state[4] < self.cross):
             self.accident = True
             self.no_safe = True
             print("Accident!")
-
-        # Others rewards
-        rew4 = - 5.0 * (pos_p >= self.cross) * (pos < 4.0) * (self.choix_voiture > 0)
-        rew4 = rew4 - 0.2 * (pos < 4.0) * (self.choix_voiture < 0)
-        rew4 = rew4 - 5.0 *(self.state[2]-pos) * (self.state[2]>pos)
-        if math.isnan(rew4):
-            print("Rew4 is Nan : accident="+str(self.accident))
+        
         return rew1+rew2+rew3+rew4
 
     """
